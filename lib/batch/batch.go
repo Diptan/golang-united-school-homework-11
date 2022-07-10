@@ -1,8 +1,11 @@
 package batch
 
 import (
+	"context"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type user struct {
@@ -15,22 +18,20 @@ func getOne(id int64) user {
 }
 
 func getBatch(n int64, pool int64) (res []user) {
-	var ops int64
 	var mu sync.Mutex
-	var wg sync.WaitGroup
-	for int64(len(res)) < n {
-		for i := 0; int64(i) < pool; i++ {
-			wg.Add(1)
-			go func() {
-				ops++
-				u := getOne(ops)
+	errG, _ := errgroup.WithContext(context.Background())
+	errG.SetLimit(int(pool))
+	for i := int64(0); i < n; i++ {
+		func(i int64) {
+			errG.Go(func() error {
+				u := getOne(i)
 				mu.Lock()
 				res = append(res, u)
 				mu.Unlock()
-				wg.Done()
-			}()
-		}
-		wg.Wait()
+				return nil
+			})
+		}(i)
 	}
+	errG.Wait()
 	return
 }
